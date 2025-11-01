@@ -35,8 +35,8 @@
 
 | Platform | Deploy Button | Status |
 |----------|---------------|---------|
-| **Koyeb** | [![Deploy on Koyeb](https://www.koyeb.com/static/images/deploy/button.svg)](https://app.koyeb.com/services/deploy?type=git&repository=github.com%2FDesire-exe%2FDesire-eXe-V1.0&branch=main&name=desire-exe-bot) | ✅ **RECOMMENDED** |
-| **Render** | [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Desire-exe/Desire-eXe-V1.0) | ✅ Available |
+| **Koyeb** | [![Deploy on Koyeb](https://www.koyeb.com/static/images/deploy/button.svg)](https://app.koyeb.com/services/deploy?type=git&repository=github.com%2FDesire-exe%2FDesire-eXe-V1.0&branch=main&name=desire-exe-bot) | ✅ **AVAILABLE** |
+| **Render** | [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Desire-exe/Desire-eXe-V1.0) | ✅ **AVAILABLE** |
 
 ### **🔗 After You Deploy:**
 1. **Wait for deployment to complete**
@@ -210,3 +210,4 @@ WHATSAPP_NUMBER=234**********
 </p>
 
 <a><img src='https://i.imgur.com/LyHic3i.gif'/></a><a><img src='https://i.imgur.com/LyHic3i.gif'/></a>
+
