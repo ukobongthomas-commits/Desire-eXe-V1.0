@@ -32,6 +32,17 @@ let reconnectCount = 0;
 const MAX_RECONNECTS = 50;
 const BASE_RECONNECT_DELAY = 5000;
 
+// 🔧 FIX: Add missing unwrapMessage function
+function unwrapMessage(message) {
+  if (message?.ephemeralMessage?.message) {
+    return unwrapMessage(message.ephemeralMessage.message);
+  }
+  if (message?.viewOnceMessage?.message) {
+    return unwrapMessage(message.viewOnceMessage.message);
+  }
+  return message;
+}
+
 // Enhanced configuration loader
 function loadConfig() {
   const defaultConfig = {
@@ -735,8 +746,12 @@ async function startBot() {
         global.botStatus = 'connected';
         global.connectionTime = new Date().toISOString();
         
-        await sock.sendPresenceUpdate('available');
-        await restoreActivePresence(sock);
+        try {
+          await sock.sendPresenceUpdate('available');
+          await restoreActivePresence(sock);
+        } catch (error) {
+          console.log('⚠️ Presence update failed (normal during connection):', error.message);
+        }
         
         // Log performance
         logPerformance('connection_success', {
@@ -778,6 +793,7 @@ async function startBot() {
         
         if (!msg.message || jid === 'status@broadcast' || jid.endsWith('@bot')) return;
 
+        // 🔧 FIX: Use the unwrapMessage function that's now defined
         msg.message = unwrapMessage(msg.message);
 
         if (isGroupStatusMentionMessage(msg.message)) {
@@ -845,7 +861,14 @@ async function startBot() {
         await MessageHandler(sock, messages, contactList);
       } catch (err) {
         console.error('❌ Message handler error:', err);
-        if (msg) await sock.sendMessageAck(msg.key);
+        // 🔧 FIX: Add proper error handling for message acknowledgment
+        if (msg && msg.key && msg.key.id) {
+          try {
+            await sock.sendMessageAck(msg.key);
+          } catch (ackError) {
+            console.error('❌ Failed to send message ack:', ackError);
+          }
+        }
       }
     });
 
