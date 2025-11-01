@@ -190,7 +190,7 @@ WHATSAPP_NUMBER=234**********
 ## 📊 **STATISTICS**
 
 #### `TOTAL PROFILE VIEWS`
-![Visitor Count](https://profile-counter.glitch.me/Desire-exe/count.svg)
+[![Visitors](https://api.visitorbadge.io/api/visitors?path=https://github.com/Desire-exe&label=PROFILE%20VIEWS&labelColor=%23555&countColor=%23263759)](https://github.com/Desire-exe)
 
 <a><img src='https://i.imgur.com/LyHic3i.gif'/></a><a><img src='https://i.imgur.com/LyHic3i.gif'/></a>
 
@@ -211,6 +211,7 @@ WHATSAPP_NUMBER=234**********
 </p>
 
 <a><img src='https://i.imgur.com/LyHic3i.gif'/></a><a><img src='https://i.imgur.com/LyHic3i.gif'/></a>
+
 
 
 
