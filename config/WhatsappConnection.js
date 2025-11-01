@@ -7,7 +7,7 @@ const {
 const P = require('pino');
 const fs = require('fs');
 const path = require('path');
-const qrcode = require('qrcode'); // Add QR code generation
+const qrcode = require('qrcode');
 const MessageHandler = require('../controllers/Message');
 const { restoreActivePresence } = require('../presenceSystem');
 const delay = ms => new Promise(res => setTimeout(res, ms));
@@ -22,7 +22,10 @@ let contactList = [];
 let botStartTime = null;
 let isConnected = false;
 let qrCode = null;
-let qrCodeImage = null; // Store QR as image data
+let qrCodeImage = null;
+let pairingCode = null;
+let pairingPhoneNumber = null;
+let currentSock = null;
 
 // Load contacts
 function loadContactsFromFile() {
@@ -90,35 +93,31 @@ function isDangerousText(msg) {
   
   if (!text || text.trim().length === 0) return false;
   
-  // Remove ALL emoji-related characters including complex sequences
   const textWithoutEmojis = text
-    // Remove basic emojis and symbols using proper Unicode ranges
-    .replace(/[\u{1F300}-\u{1F5FF}]/gu, '') // Misc Symbols and Pictographs
-    .replace(/[\u{1F600}-\u{1F64F}]/gu, '') // Emoticons
-    .replace(/[\u{1F680}-\u{1F6FF}]/gu, '') // Transport & Map Symbols
-    .replace(/[\u{1F700}-\u{1F77F}]/gu, '') // Alchemical Symbols
-    .replace(/[\u{1F780}-\u{1F7FF}]/gu, '') // Geometric Shapes Extended
-    .replace(/[\u{1F800}-\u{1F8FF}]/gu, '') // Supplemental Arrows-C
-    .replace(/[\u{1F900}-\u{1F9FF}]/gu, '') // Supplemental Symbols and Pictographs
-    .replace(/[\u{1FA00}-\u{1FA6F}]/gu, '') // Chess Symbols
-    .replace(/[\u{1FA70}-\u{1FAFF}]/gu, '') // Symbols and Pictographs Extended-A
-    .replace(/[\u{2600}-\u{26FF}]/gu, '')   // Misc Symbols
-    .replace(/[\u{2700}-\u{27BF}]/gu, '')   // Dingbats
-    .replace(/[\u{2300}-\u{23FF}]/gu, '')   // Misc Technical
-    .replace(/[\u{2B50}-\u{2BFF}]/gu, '')   // Misc Symbols and Arrows
-    .replace(/[\u{FE0F}\u{200D}]/gu, '');   // Variation Selectors & Zero-Width Joiner
+    .replace(/[\u{1F300}-\u{1F5FF}]/gu, '')
+    .replace(/[\u{1F600}-\u{1F64F}]/gu, '')
+    .replace(/[\u{1F680}-\u{1F6FF}]/gu, '')
+    .replace(/[\u{1F700}-\u{1F77F}]/gu, '')
+    .replace(/[\u{1F780}-\u{1F7FF}]/gu, '')
+    .replace(/[\u{1F800}-\u{1F8FF}]/gu, '')
+    .replace(/[\u{1F900}-\u{1F9FF}]/gu, '')
+    .replace(/[\u{1FA00}-\u{1FA6F}]/gu, '')
+    .replace(/[\u{1FA70}-\u{1FAFF}]/gu, '')
+    .replace(/[\u{2600}-\u{26FF}]/gu, '')
+    .replace(/[\u{2700}-\u{27BF}]/gu, '')
+    .replace(/[\u{2300}-\u{23FF}]/gu, '')
+    .replace(/[\u{2B50}-\u{2BFF}]/gu, '')
+    .replace(/[\u{FE0F}\u{200D}]/gu, '');
   
-  // If only emojis were present, it's safe
   if (textWithoutEmojis.trim().length === 0) {
     return false;
   }
   
-  // Now check the non-emoji text for actual dangerous patterns
   const dangerousPatterns = [
-    /[\u200B-\u200C\u200E-\u200F\u202A-\u202E\u2060]/, // Control chars (excluding ZWJ)
-    /(.+)\1{50,}/,  // Repeated text spam
-    /.{4000,}/,     // Extremely long messages
-    /[\uFFF9-\uFFFF]/, // Special characters
+    /[\u200B-\u200C\u200E-\u200F\u202A-\u202E\u2060]/,
+    /(.+)\1{50,}/,
+    /.{4000,}/,
+    /[\uFFF9-\uFFFF]/,
   ];
   
   return dangerousPatterns.some(p => p.test(textWithoutEmojis));
@@ -129,6 +128,7 @@ function isSuspiciousMedia(msg, maxBytes) {
   const size = media?.fileLength || 0;
   return size > maxBytes;
 }
+
 // Get participant action text
 function getParticipantActionText(participants, action) {
   const actionTexts = {
@@ -221,7 +221,50 @@ async function generateQRImage(qr) {
   }
 }
 
-// QR Code HTML page
+// Request pairing code from WhatsApp
+async function requestPairingCode(phoneNumber) {
+  if (!currentSock) {
+    throw new Error('WhatsApp connection not initialized');
+  }
+
+  try {
+    console.log(`📱 Requesting pairing code for: ${phoneNumber}`);
+    
+    // Format phone number properly (remove any non-digit characters)
+    const formattedNumber = phoneNumber.replace(/\D/g, '');
+    
+    // Request pairing code from WhatsApp using Baileys' built-in method
+    const code = await currentSock.requestPairingCode(formattedNumber);
+    
+    console.log(`✅ Pairing code received: ${code}`);
+    
+    pairingPhoneNumber = formattedNumber;
+    pairingCode = code;
+    
+    // Auto-clear pairing code after 2 minutes
+    setTimeout(() => {
+      if (pairingCode === code) {
+        console.log('⏰ Pairing code expired');
+        pairingCode = null;
+        pairingPhoneNumber = null;
+      }
+    }, 120000);
+    
+    return code;
+  } catch (error) {
+    console.error('❌ Failed to get pairing code:', error);
+    throw new Error(`Failed to get pairing code: ${error.message}`);
+  }
+}
+
+// Clear pairing code
+function clearPairingCode() {
+  pairingCode = null;
+  pairingPhoneNumber = null;
+  console.log('🧹 Pairing code cleared');
+}
+
+// QR Code HTML page (QR only, no pairing tab)
 function getQRPage() {
   return `
 <!DOCTYPE html>
@@ -232,7 +275,7 @@ function getQRPage() {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             margin: 0;
             padding: 20px;
@@ -240,75 +283,126 @@ function getQRPage() {
             justify-content: center;
             align-items: center;
             min-height: 100vh;
+            color: #333;
         }
         .container {
             background: white;
             padding: 40px;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            border-radius: 20px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.2);
             text-align: center;
-            max-width: 400px;
+            max-width: 500px;
             width: 100%;
         }
         h1 {
-            color: #333;
-            margin-bottom: 10px;
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 2.2em;
+            font-weight: 700;
+        }
+        .subtitle {
+            color: #7f8c8d;
+            margin-bottom: 30px;
+            font-size: 1.1em;
         }
         .status {
-            padding: 10px;
-            border-radius: 5px;
-            margin: 15px 0;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
             font-weight: bold;
+            font-size: 1.1em;
         }
         .qr-pending {
             background: #fff3cd;
             color: #856404;
-            border: 1px solid #ffeaa7;
+            border: 2px solid #ffeaa7;
         }
         .connected {
             background: #d1ecf1;
             color: #0c5460;
-            border: 1px solid #bee5eb;
+            border: 2px solid #bee5eb;
         }
         .qr-image {
-            max-width: 300px;
-            margin: 20px auto;
-            border: 2px solid #ddd;
-            border-radius: 10px;
-            padding: 10px;
+            max-width: 280px;
+            margin: 25px auto;
+            border: 3px solid #ddd;
+            border-radius: 15px;
+            padding: 15px;
             background: white;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
         }
         .instructions {
             background: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
-            margin: 20px 0;
+            padding: 20px;
+            border-radius: 12px;
+            margin: 25px 0;
             text-align: left;
+            border-left: 4px solid #3498db;
+        }
+        .instructions h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 1.2em;
         }
         .instructions ol {
             margin: 10px 0;
-            padding-left: 20px;
+            padding-left: 25px;
         }
         .instructions li {
-            margin-bottom: 8px;
+            margin-bottom: 12px;
+            line-height: 1.5;
         }
         .btn {
             display: inline-block;
-            padding: 10px 20px;
+            padding: 12px 24px;
             background: #007bff;
             color: white;
             text-decoration: none;
-            border-radius: 5px;
+            border-radius: 8px;
             margin: 5px;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+            font-size: 1em;
         }
         .btn:hover {
             background: #0056b3;
+            transform: translateY(-2px);
+        }
+        .btn-secondary {
+            background: #95a5a6;
+        }
+        .btn-secondary:hover {
+            background: #7f8c8d;
+        }
+        .nav-buttons {
+            margin-top: 30px;
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .uptime {
+            margin-top: 25px;
+            font-size: 0.9em;
+            color: #7f8c8d;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .highlight {
+            background: #fff3cd;
+            padding: 3px 6px;
+            border-radius: 4px;
+            font-weight: bold;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🤖 Desire-eXe V1.0</h1>
+        <p class="subtitle">QR Code Authentication</p>
+        
         <div class="status ${qrCode ? 'qr-pending' : 'connected'}">
             ${qrCode ? '📱 QR Code Ready - Scan to Connect' : '✅ Bot Connected - No QR Needed'}
         </div>
@@ -319,36 +413,37 @@ function getQRPage() {
         </div>
         
         <div class="instructions">
-            <h3>📲 How to Connect:</h3>
+            <h3>📲 How to Connect with QR Code:</h3>
             <ol>
-                <li>Open WhatsApp on your phone</li>
-                <li>Tap <strong>Settings</strong> → <strong>Linked Devices</strong></li>
-                <li>Tap <strong>Link a Device</strong></li>
-                <li>Scan the QR code above</li>
+                <li>Open <span class="highlight">WhatsApp</span> on your phone</li>
+                <li>Tap <span class="highlight">Settings</span> → <span class="highlight">Linked Devices</span></li>
+                <li>Tap <span class="highlight">Link a Device</span></li>
+                <li>Scan the QR code above with your phone</li>
                 <li>Wait for connection confirmation</li>
             </ol>
         </div>
         
-        <p><strong>QR Code will expire in 2 minutes</strong></p>
+        <p><strong>⏰ QR Code will expire in 2 minutes</strong></p>
         ` : `
         <div style="font-size: 48px; margin: 20px 0;">✅</div>
         <h2>Bot is Connected!</h2>
         <p>The WhatsApp bot is successfully connected and running.</p>
         `}
         
-        <div style="margin-top: 20px;">
-            <a href="/status" class="btn">Status</a>
-            <a href="/session" class="btn">Session Info</a>
-            <a href="/health" class="btn">Health Check</a>
+        <div class="nav-buttons">
+            <a href="/" class="btn btn-secondary">🏠 Home</a>
+            <a href="/pairing" class="btn">🔢 Pairing Code</a>
+            <a href="/status" class="btn btn-secondary">📊 Status</a>
+            <a href="/health" class="btn btn-secondary">🛠️ Health</a>
         </div>
         
-        <div style="margin-top: 20px; font-size: 12px; color: #666;">
-            Bot Uptime: ${getUptimeString()}
+        <div class="uptime">
+            ⏱️ Bot Uptime: ${getUptimeString()}
         </div>
     </div>
     
     <script>
-        // Auto-refresh QR code every 30 seconds if pending
+        // Auto-refresh every 30 seconds if QR code is pending
         ${qrCode ? `
         setTimeout(() => {
             location.reload();
@@ -360,7 +455,7 @@ function getQRPage() {
   `;
 }
 
-// Main bot
+// Main bot with pairing code support
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
   let sock;
@@ -371,7 +466,7 @@ async function startBot() {
   // Load config for owner JID - with environment variable fallback
   let config = {
     AUTO_BLOCK_UNKNOWN: false,
-    OWNER_JID: process.env.OWNER_JID || '2347017747337@s.whatsapp.net', // YOUR JID WHATSAPP_NUMBER@s.whatsapp.net
+    OWNER_JID: process.env.OWNER_JID || '2347017747337@s.whatsapp.net',
     MAX_MEDIA_SIZE: 1500000
   };
 
@@ -389,8 +484,18 @@ async function startBot() {
       auth: state,
       logger: P({ level: 'warn' }),
       
-      // Remove printQRInTerminal since it's deprecated
-      // Connection options for Koyeb
+      // Enable pairing code
+      generateHighQualityLinkPreview: false,
+      patchMessageBeforeSending: (message) => {
+        const requiresPatch = !!(
+          message.buttonsMessage ||
+          message.templateMessage ||
+          message.listMessage
+        );
+        return requiresPatch;
+      },
+      
+      // Connection options
       browser: ["Ubuntu", "Chrome", "120.0.0.0"],
       connectTimeoutMs: 60000,
       keepAliveIntervalMs: 30000,
@@ -408,12 +513,15 @@ async function startBot() {
       markOnlineOnConnect: true,
       syncFullHistory: false,
       linkPreviewImageThumbnailWidth: 200,
-      generateHighQualityLinkPreview: false,
       getMessage: async (key) => {
         console.warn('⚠️ getMessage called for unknown message:', key.id);
         return null;
       }
     });
+
+    // Store the socket globally for pairing code requests
+    currentSock = sock;
+
   } catch (err) {
     console.error('❌ Failed to initialize socket:', err);
     setTimeout(startBot, 10000);
@@ -423,76 +531,77 @@ async function startBot() {
   sock.ev.on('creds.update', saveCreds);
 
   // Connection update handler
-sock.ev.on('connection.update', async (update) => {
-  const { connection, lastDisconnect, qr } = update;
-  
-  // Handle QR Code - Generate web-accessible QR
-  if (qr) {
-    console.log('📱 QR Code received - generating web QR...');
-    qrCode = qr;
-    qrCodeImage = await generateQRImage(qr);
-    global.botStatus = 'qr_pending';
-    isConnected = false;
+  sock.ev.on('connection.update', async (update) => {
+    const { connection, lastDisconnect, qr } = update;
     
-    console.log('🌐 QR Code available at: http://your-app.koyeb.app/qr');
-    console.log('📲 Scan the QR code via the web interface to connect');
-    
-    // Auto-clear QR after 2 minutes
-    setTimeout(() => {
-      if (!isConnected && qrCode === qr) {
-        console.log('⏰ QR Code expired - will generate new one on next connection');
-        qrCode = null;
-        qrCodeImage = null;
+    // Handle QR Code
+    if (qr) {
+      console.log('📱 QR Code received - generating web QR...');
+      qrCode = qr;
+      qrCodeImage = await generateQRImage(qr);
+      global.botStatus = 'qr_pending';
+      isConnected = false;
+      clearPairingCode(); // Clear any existing pairing code when QR is generated
+      
+      console.log('🌐 QR Code available at web interface');
+      
+      // Auto-clear QR after 2 minutes
+      setTimeout(() => {
+        if (!isConnected && qrCode === qr) {
+          console.log('⏰ QR Code expired');
+          qrCode = null;
+          qrCodeImage = null;
+        }
+      }, 120000);
+    }
+
+    if (connection === 'close') {
+      const code = lastDisconnect?.error?.output?.statusCode;
+      const errorMessage = lastDisconnect?.error?.message;
+      
+      console.log('🔌 Connection closed, code:', code, 'Error:', errorMessage);
+      isConnected = false;
+      qrCode = null;
+      qrCodeImage = null;
+      clearPairingCode();
+      
+      if (code === 428 || errorMessage?.includes('Connection Terminated')) {
+        console.log('🔄 WhatsApp terminated connection - auto-reconnecting in 10s...');
+        global.botStatus = 'reconnecting';
+        setTimeout(startBot, 10000);
       }
-    }, 120000);
-  }
-
-  if (connection === 'close') {
-    const code = lastDisconnect?.error?.output?.statusCode;
-    const errorMessage = lastDisconnect?.error?.message;
-    
-    console.log('🔌 Connection closed, code:', code, 'Error:', errorMessage);
-    isConnected = false;
-    qrCode = null;
-    qrCodeImage = null;
-    
-    // FIXED: Handle 428 (Connection Terminated) with auto-reconnect
-    if (code === 428 || errorMessage?.includes('Connection Terminated')) {
-      console.log('🔄 WhatsApp terminated connection - auto-reconnecting in 10s...');
-      global.botStatus = 'reconnecting';
-      setTimeout(startBot, 10000);
+      else if (code !== DisconnectReason.loggedOut) {
+        console.log('⚠️ Connection closed - reconnecting in 10s...');
+        global.botStatus = 'reconnecting';
+        setTimeout(startBot, 10000);
+      } else {
+        console.log('🔒 Bot logged out - authentication required');
+        global.botStatus = 'needs_auth';
+      }
     }
-    else if (code !== DisconnectReason.loggedOut) {
-      console.log('⚠️ Connection closed - reconnecting in 10s...');
-      global.botStatus = 'reconnecting';
-      setTimeout(startBot, 10000);
-    } else {
-      console.log('🔒 Bot logged out - QR authentication required');
-      global.botStatus = 'needs_auth';
+
+    if (connection === 'open') {
+      console.log('✅ Desire-eXe V1.0 Is Online!');
+      isConnected = true;
+      qrCode = null;
+      qrCodeImage = null;
+      clearPairingCode();
+      global.botStatus = 'connected';
+      global.connectionTime = new Date().toISOString();
+      
+      await sock.sendPresenceUpdate('available');
+      await restoreActivePresence(sock);
+      
+      await sendConnectionNotification(sock, config);
     }
-  }
 
-  if (connection === 'open') {
-    console.log('✅ Desire-eXe V1.0 Is Online!');
-    isConnected = true;
-    qrCode = null;
-    qrCodeImage = null;
-    global.botStatus = 'connected';
-    global.connectionTime = new Date().toISOString();
-    
-    await sock.sendPresenceUpdate('available');
-    await restoreActivePresence(sock);
-    
-    // Send connection notification to owner
-    await sendConnectionNotification(sock, config);
-  }
+    if (connection === 'connecting') {
+      console.log('🔄 Connecting to WhatsApp...');
+      isConnected = false;
+      global.botStatus = 'connecting';
+    }
+  });
 
-  if (connection === 'connecting') {
-    console.log('🔄 Connecting to WhatsApp...');
-    isConnected = false;
-    global.botStatus = 'connecting';
-  }
-});
   loadContactsFromFile();
 
   // Remove old listeners
@@ -747,12 +856,11 @@ sock.ev.on('connection.update', async (update) => {
   return sock;
 }
 
-// Export QR code related functions for use in app.js
+// Export functions for use in app.js
 module.exports = { 
   startBot, 
   getQRPage, 
-  getQRCode: () => ({ qrCode, qrCodeImage, isConnected }) 
+  getQRCode: () => ({ qrCode, qrCodeImage, isConnected, pairingCode, pairingPhoneNumber }),
+  requestPairingCode,
+  clearPairingCode
 };
-
-
-
