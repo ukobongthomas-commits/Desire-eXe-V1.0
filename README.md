@@ -41,19 +41,23 @@
 ### **🔗 After You Deploy:**
 1. **Wait for deployment to complete**
 2. **Visit your app URL**: `https://your-app-name.koyeb.app` or `https://your-app-name.onrender.com`
-3. **Go to QR page**: `/qr`
-4. **Scan with WhatsApp**
-5. **Your bot connects!**
+3. **Go to Authentication page**: `/auth`
+4. **Choose QR Code or Pairing Code method**
+5. **Scan QR or Enter pairing code in WhatsApp**
+6. **Your bot connects!**
 
 ### **📱 Access Points:**
+- **Authentication**: `/auth` (QR Code + Pairing Code)
 - **Status**: `/status`
-- **QR Code**: `/qr` 
-- **Pairing Code**: `/pairing`
+- **QR Code**: `/qr` (legacy redirect)
+- **Pairing Code**: `/auth` (use the Pairing tab)
 - **Session Info**: `/session`
 - **Health Check**: `/health`
 - **Ping**: `/ping` (for uptime monitoring)
 
 *Replace `your-app-name` with your actual deployment name*
+
+**Note**: The `/auth` page combines both QR Code and Pairing Code authentication in one beautiful interface with tab switching!
 
 ## 🎯 **BOT FEATURES OVERVIEW**
 
@@ -210,4 +214,5 @@ WHATSAPP_NUMBER=234**********
 </p>
 
 <a><img src='https://i.imgur.com/LyHic3i.gif'/></a><a><img src='https://i.imgur.com/LyHic3i.gif'/></a>
+
 
