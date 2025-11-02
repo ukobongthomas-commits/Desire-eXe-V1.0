@@ -160,7 +160,6 @@ WHATSAPP_NUMBER=234**********
 - **Status Page**: `/status`
 - **Health Check**: `/health`
 - **Session Info**: `/session`
-- **Bot Info**: `/bot/info`
 
 ### **Bot Status Indicators**
 - 🟢 **Online** - Bot is connected and ready
@@ -190,8 +189,6 @@ WHATSAPP_NUMBER=234**********
 
 ### **Current Status:**
 [![Uptime Robot status](https://img.shields.io/uptimerobot/status/m795447992-3a2be0fb9c9c1f2d5e1a6a45?label=24%2F7%20UPTIME&style=for-the-badge&color=red)](https://status.desire-exe.xyz)
-
-*Replace with your actual UptimeRobot monitor ID*
 
 <a><img src='https://i.imgur.com/LyHic3i.gif'/></a><a><img src='https://i.imgur.com/LyHic3i.gif'/></a>
 
@@ -242,3 +239,4 @@ WHATSAPP_NUMBER=234**********
 </p>
 
 <a><img src='https://i.imgur.com/LyHic3i.gif'/></a><a><img src='https://i.imgur.com/LyHic3i.gif'/></a>
+
