@@ -2832,7 +2832,7 @@ if (command === 'Desire') {
 }
 
 // Disable Chat
-if (command === 'Desire-off') 
+if (command === 'Desire-off') {
 const isMainOwner = senderJid === config.OWNER_JID;
     
     if (!isMainOwner) {
@@ -8973,6 +8973,7 @@ if (command === 'antibadwords-off') {
 }
 
 module.exports = Message;
+
 
 
 
