@@ -18,6 +18,7 @@ const { DetikNews, DetikViral, DetikLatest } = require('./Detik');
 const { AnimeVideo, downloadImage } = require('./Anime');
 const { exec } = require('child_process');
 const { exec: ytExec } = require('yt-dlp-exec');
+const ytdl = require('ytdl-core');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const QRCode = require('qrcode');
 const delay = ms => new Promise(res => setTimeout(res, ms));
@@ -26,7 +27,7 @@ const path = require('path');
 const gTTS = require('gtts');
 const P = require('pino');
 const Tesseract = require('tesseract.js');
-const ownerNumber = '2347017747337'; // Your Number
+const ownerNumber = config.WHATSAPP_NUMBER;
 const os = require('os');
 const process = require('process');
 const dns = require('dns');
@@ -4345,12 +4346,14 @@ if (command === "play") {
     }
 }
 
-if (command === "play") {
-    let query = args.join(" ");
 
-    if (!query) {
-        await sock.sendMessage(chatId, { 
-            text: `❌ Please provide a search query.\nExample: \\${currentPrefix}play song name` 
+// YouTube Video to MP4
+if (command === "yt-mp4") {
+    const url = args.join(' ').trim();
+
+    if (!url || !ytdl.validateURL(url)) {
+        await sock.sendMessage(chatId, {
+            text: `❌ Invalid or missing YouTube URL.\n\nExample: \`${currentPrefix}yt-mp4 https://youtube.com/...\``
         }, { quoted: msg });
         return;
     }
@@ -4358,152 +4361,137 @@ if (command === "play") {
     await sock.sendMessage(chatId, { react: { text: "👨‍💻", key: msg.key } });
 
     try {
-        // Create upload directory
-        const uploadDir = path.join(__dirname, "../uploads");
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
+        const uploadsDir = path.join(__dirname, "../uploads");
+        if (!fs.existsSync(uploadsDir)) {
+            fs.mkdirSync(uploadsDir, { recursive: true });
         }
 
-        // Step 1: Search for video using play-dl
-        console.log('🔍 Searching for:', query);
-        const results = await playdl.search(query, { limit: 1 });
-        if (!results || results.length === 0) {
-            await sock.sendMessage(chatId, { 
-                text: "❌ Song not found. Try a different search term." 
-            }, { quoted: msg });
-            await sock.sendMessage(chatId, { react: { text: "❌", key: msg.key } });
-            return;
-        }
-
-        const video = results[0];
-        const videoUrl = video.url;
+        const outputFilePath = path.join(uploadsDir, `ytdl-video-${Date.now()}.mp4`);
         
-        console.log('🎯 Found video:', video.title, 'URL:', videoUrl);
-
-        // Step 2: Get video info for thumbnail and upload date
-        const videoInfo = await playdl.video_info(videoUrl);
-        const videoDetails = videoInfo.video_details;
-
-        // Get thumbnail URL
-        const thumbnails = videoDetails.thumbnails || [];
-        const thumbnailUrl = thumbnails.length > 0 ? 
-            thumbnails[thumbnails.length - 1].url : 
-            `https://img.youtube.com/vi/${videoDetails.id}/maxresdefault.jpg`;
-
-        // Format duration
-        const formatDuration = (durationRaw) => {
-            if (!durationRaw) return "00:00";
-            const parts = durationRaw.split(':');
-            if (parts.length === 2) {
-                return `00:${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`;
-            } else if (parts.length === 3) {
-                return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}:${parts[2].padStart(2, '0')}`;
-            }
-            return durationRaw;
-        };
-
-        // Calculate time ago
-        const getTimeAgo = (uploadedAt) => {
-            if (!uploadedAt) return "Unknown";
-            const uploadDate = new Date(uploadedAt);
-            const now = new Date();
-            const diffTime = Math.abs(now - uploadDate);
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            
-            if (diffDays < 1) return "Today";
-            if (diffDays === 1) return "1 day ago";
-            if (diffDays < 7) return `${diffDays} days ago`;
-            if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
-            if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
-            return `${Math.floor(diffDays / 365)} years ago`;
-        };
-
-        const formattedDuration = formatDuration(videoDetails.durationRaw);
-        const timeAgo = getTimeAgo(videoDetails.uploadedAt);
-        const views = videoDetails.views ? videoDetails.views.toLocaleString() : "Unknown";
-
-        // Step 3: Send thumbnail as image with caption
-        const caption = `🎶 *DESIRE-EXE MUSIC PLAYER*\n\n` +
-            `📛 *Title:* ${videoDetails.title}\n` +
-            `👀 *Views:* ${views}\n` +
-            `⏱️ *Duration:* ${formattedDuration}\n` +
-            `📅 *Uploaded:* ${timeAgo}\n` +
-            `🔗 *URL:* ${videoUrl}\n\n` +
-            `_Powered by Desire eXe_`;
-
-        // Send thumbnail image with your caption
-        await sock.sendMessage(chatId, { 
-            image: { url: thumbnailUrl },
-            caption: caption
-        }, { quoted: msg });
-
-        await sock.sendMessage(chatId, { react: { text: "⬇️", key: msg.key } });
-
-        // Step 4: Download using yt-dlp
-        const outputPath = path.join(uploadDir, `audio-${Date.now()}.mp3`);
+        // Download video using ytdl-core
+        const videoStream = ytdl(url, { 
+            quality: 'highest',
+            filter: format => format.hasVideo && format.hasAudio && format.container === 'mp4'
+        });
         
-        console.log('📥 Downloading audio with yt-dlp...');
+        const writeStream = fs.createWriteStream(outputFilePath);
         
-        await ytExec(videoUrl, {
-            extractAudio: true,
-            audioFormat: 'mp3',
-            audioQuality: 0,
-            output: outputPath,
-            noCheckCertificates: true,
-            noWarnings: true,
-            preferFreeFormats: true,
-            addHeader: ['referer:youtube.com', 'user-agent:googlebot']
+        await new Promise((resolve, reject) => {
+            videoStream.pipe(writeStream);
+            videoStream.on('end', resolve);
+            videoStream.on('error', reject);
+            writeStream.on('error', reject);
         });
 
-        // Check if file was created
-        if (!fs.existsSync(outputPath)) {
-            throw new Error('Download failed - no output file created');
+        if (!fs.existsSync(outputFilePath) || fs.statSync(outputFilePath).size === 0) {
+            throw new Error('Downloaded file not found or empty');
         }
 
-        const stats = fs.statSync(outputPath);
-        console.log('✅ Download completed. File size:', stats.size, 'bytes');
+        // Get file size to check if it's too large for WhatsApp
+        const stats = fs.statSync(outputFilePath);
+        const fileSizeInMB = stats.size / (1024 * 1024);
 
-        // WhatsApp has ~16MB limit for audio files
-        if (stats.size > 16 * 1024 * 1024) {
-            fs.unlinkSync(outputPath);
+        if (fileSizeInMB > 16) {
             await sock.sendMessage(chatId, { 
-                text: "❌ Audio file is too large for WhatsApp (max 16MB)." 
+                text: `📹 Video downloaded (${fileSizeInMB.toFixed(1)}MB) but too large for WhatsApp.\n📁 File saved locally.` 
             }, { quoted: msg });
-            await sock.sendMessage(chatId, { react: { text: "❌", key: msg.key } });
-            return;
-        }
-
-        await sock.sendMessage(chatId, { react: { text: "🎶", key: msg.key } });
-
-        // Step 5: Send audio file
-        console.log('📤 Sending audio file...');
-        await sock.sendMessage(chatId, {
-            audio: fs.readFileSync(outputPath),
-            mimetype: 'audio/mpeg',
-            fileName: `${videoDetails.title.substring(0, 50).replace(/[^\w\s.-]/gi, '')}.mp3`
-        }, { quoted: msg });
-
-        await sock.sendMessage(chatId, { react: { text: "✅", key: msg.key } });
-        console.log('🎉 Audio sent successfully!');
-
-        // Cleanup
-        fs.unlinkSync(outputPath);
-
-    } catch (err) {
-        console.error('❌ Play command error:', err);
-        
-        let errorMsg = "❌ An error occurred while downloading: ";
-        if (err.message.includes('Python')) {
-            errorMsg += "Python/yt-dlp not configured properly.";
-        } else if (err.message.includes('not found')) {
-            errorMsg += "Song not found.";
-        } else if (err.message.includes('too large')) {
-            errorMsg += "File is too large for WhatsApp.";
         } else {
-            errorMsg += err.message;
+            await sock.sendMessage(chatId, { 
+                video: fs.readFileSync(outputFilePath), 
+                caption: "📥 Here's your YouTube video!" 
+            }, { quoted: msg });
         }
         
-        await sock.sendMessage(chatId, { text: errorMsg }, { quoted: msg });
+        console.log(`✅ YouTube video sent: ${outputFilePath}`);
+        await sock.sendMessage(chatId, { react: { text: "✅", key: msg.key } });
+
+        // Clean up file after sending
+        setTimeout(() => {
+            if (fs.existsSync(outputFilePath)) {
+                fs.unlinkSync(outputFilePath);
+            }
+        }, 30000);
+        
+    } catch (error) {
+        console.error('❌ YouTube Video Error:', error);
+        await sock.sendMessage(chatId, { 
+            text: `❌ Failed to download YouTube video: ${error.message}` 
+        }, { quoted: msg });
+        await sock.sendMessage(chatId, { react: { text: "❌", key: msg.key } });
+    }
+}
+
+// YouTube Video to MP3
+if (command === "yt-mp3") {
+    const url = args.join(' ').trim();
+
+    if (!url || !ytdl.validateURL(url)) {
+        await sock.sendMessage(chatId, {
+            text: `❌ Invalid or missing YouTube URL.\n\nExample: \`${currentPrefix}yt-mp3 https://youtube.com/...\``
+        }, { quoted: msg });
+        return;
+    }
+
+    await sock.sendMessage(chatId, { react: { text: "👨‍💻", key: msg.key } });
+
+    try {
+        const uploadsDir = path.join(__dirname, "../uploads");
+        if (!fs.existsSync(uploadsDir)) {
+            fs.mkdirSync(uploadsDir, { recursive: true });
+        }
+
+        const outputFilePath = path.join(uploadsDir, `ytdl-audio-${Date.now()}.mp3`);
+        
+        // Download audio using ytdl-core
+        const audioStream = ytdl(url, { 
+            quality: 'highestaudio',
+            filter: 'audioonly'
+        });
+        
+        const writeStream = fs.createWriteStream(outputFilePath);
+        
+        await new Promise((resolve, reject) => {
+            audioStream.pipe(writeStream);
+            audioStream.on('end', resolve);
+            audioStream.on('error', reject);
+            writeStream.on('error', reject);
+        });
+
+        if (!fs.existsSync(outputFilePath) || fs.statSync(outputFilePath).size === 0) {
+            throw new Error('Downloaded file not found or empty');
+        }
+
+        // Get file size to check if it's too large for WhatsApp
+        const stats = fs.statSync(outputFilePath);
+        const fileSizeInMB = stats.size / (1024 * 1024);
+
+        if (fileSizeInMB > 16) {
+            await sock.sendMessage(chatId, { 
+                text: `🎵 Audio downloaded (${fileSizeInMB.toFixed(1)}MB) but too large for WhatsApp.\n📁 File saved locally.` 
+            }, { quoted: msg });
+        } else {
+            await sock.sendMessage(chatId, { 
+                audio: fs.readFileSync(outputFilePath), 
+                mimetype: 'audio/mp4',
+                fileName: 'youtube_audio.mp3'
+            }, { quoted: msg });
+        }
+        
+        console.log(`✅ YouTube audio sent: ${outputFilePath}`);
+        await sock.sendMessage(chatId, { react: { text: "✅", key: msg.key } });
+
+        // Clean up file after sending
+        setTimeout(() => {
+            if (fs.existsSync(outputFilePath)) {
+                fs.unlinkSync(outputFilePath);
+            }
+        }, 30000);
+        
+    } catch (error) {
+        console.error('❌ YouTube Audio Error:', error);
+        await sock.sendMessage(chatId, { 
+            text: `❌ Failed to download YouTube audio: ${error.message}` 
+        }, { quoted: msg });
         await sock.sendMessage(chatId, { react: { text: "❌", key: msg.key } });
     }
 }
@@ -8973,6 +8961,7 @@ if (command === 'antibadwords-off') {
 }
 
 module.exports = Message;
+
 
 
 
