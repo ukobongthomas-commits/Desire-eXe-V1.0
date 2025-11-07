@@ -1168,3 +1168,4 @@ module.exports = {
   getQRCode: () => ({ qrCode, qrCodeImage, isConnected, pairingCode, pairingPhoneNumber }),
   requestPairingCode: (sock, phoneNumber) => requestPairingCode(sock, phoneNumber)
 };
+
