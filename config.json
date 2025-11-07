@@ -4,9 +4,9 @@
   "ANTI_LINK": false,
   "AUTO_BLOCK_UNKNOWN": false,
   "ANTI_BADWORDS": false,
-  "OWNER_JID": "23470717747337@s.whatsapp.net",
-  "WHATSAPP_NUMBER": "23470717747337" 
-  "PHONE_NUMBER": "23470717747337",
+  "OWNER_JID": "2348076283943@s.whatsapp.net",
+  "WHATSAPP_NUMBER": "2348076283943" 
+  "PHONE_NUMBER": "2348076283943",
   "MAX_MEDIA_SIZE": "1500000",
   "GEMINI_API": "YOUR GEMINI_API_KEY",
   "GEMINI_PROMPT": "You must pretend to be a WhatsApp Bot and answer questions briefly. ",
@@ -86,6 +86,7 @@
     "hillbilly"
   ]
 }
+
 
 
 
